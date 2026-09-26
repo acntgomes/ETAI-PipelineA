@@ -111,3 +111,11 @@ You're free to improve on this structure or restructure it entirely -- what matt
 ## Dataset
 
 See `data/README.md`.
+
+
+##Resultados da primeira aula (mudança de logistic regression para decision trees e comparação dos erros)
+After switching from logistic regression to a decision tree, the metrics changed noticeably.
+Accuracy dropped from 0.68 to 0.63, and the f1‑score for class1 fell from 0.63 to 0.55, showing weaker performance on reoffenders.
+Precision also decreased slightly (0.66 → 0.62), while recall for class 0 remained similar (0.75 → 0.74).
+Overall, the decision tree produced less balanced results between classes.
+These differences confirm that model choice affects predictive behavior and group performance.
