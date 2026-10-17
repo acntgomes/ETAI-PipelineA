@@ -8,27 +8,12 @@ data:
   drop_columns: ["id", "decile_score", "score_text"]  # identifiers / COMPAS's own score, not our model's inputs
 
 split:
+
+
   test_size: 0.2
   random_state: 42
 
-model:
-  # one of: "dummy" (majority-class floor), "logistic_regression", "decision_tree", "random_forest"
-  # (random forest: sensible defaults, untuned -- see the example below)
-  type: "logistic_regression"
-  params:
-    # bumped from 1000 -- with this week's encoder/scaler pair in place, 1000 iterations
-    # was cutting lbfgs off before it converged (a ConvergenceWarning, not a real problem,
-    # but worth just giving it enough room rather than living with the warning)
-    max_iter: 2000
-  # Random Forest example -- swap the two lines above for these to run it:
-  # type: "random_forest"
-  # params:
-  #   n_estimators: 300
-  #   random_state: 42   # forests are random (bootstrap rows + random feature subsets): fix the seed
-  #   n_jobs: -1         # use every CPU core -- the trees are independent, so they train in parallel
 
-output:
-  results_dir: "results"   # each run's full report is saved here as a timestamped .txt file
 
      
 # Week 4: how models are evaluated -- stratified k-fold cross-validation on the
@@ -75,8 +60,6 @@ diagnostics:
       high: "High"
   redundant_columns: ["prior_offenses", "age_in_months", "juvenile_total"]
 
-output:
-  results_dir: "results"   # each run's full report is saved here as a timestamped .txt file
 
 preprocessing:
   # options: "onehot" | "ordinal" | "count" | "target"
@@ -94,3 +77,49 @@ preprocessing:
   imputation:
     numeric_strategy: "median"        # applies to age, juv_fel_count, juv_misd_count, juv_other_count, priors_count
     categorical_strategy: "most_frequent"
+
+
+
+model:
+  type: "decision_tree"
+  params:
+    random_state: 42
+
+feature_engineering:
+  enabled: false
+
+
+tuning:
+  enabled: true
+  n_trials: 30
+  n_splits: 5                                       # folds that score each candidate
+  random_state: 42                                  # seeds the sampler and those folds
+  # Keys are Pipeline parameter names. Types: int / float (low, high, log) or categorical (choices).
+  # Ensembles take minutes per run: use a small n_trials while testing.
+  search_spaces:
+    logistic_regression:
+      model__C: {type: float, low: 0.001, high: 100.0, log: true}
+    decision_tree:
+      model__max_depth: {type: int, low: 1, high: 20}
+      model__min_samples_leaf: {type: int, low: 1, high: 200, log: true}
+      model__criterion: {type: categorical, choices: ["gini", "entropy"]}
+    random_forest:
+      model__max_depth: {type: int, low: 2, high: 30}
+      model__min_samples_leaf: {type: int, low: 1, high: 200, log: true}
+      model__max_features: {type: categorical, choices: ["sqrt", 0.5, 1.0]}
+    oblique_random_forest:
+      model__estimator__tree__max_depth: {type: int, low: 2, high: 30}
+      model__estimator__tree__min_samples_leaf: {type: int, low: 1, high: 200, log: true}
+      model__estimator__project__n_components: {type: int, low: 3, high: 10}   # <= number of features
+    adaboost:
+      model__estimator__max_depth: {type: int, low: 1, high: 8}
+      model__n_estimators: {type: int, low: 25, high: 400, log: true}
+      model__learning_rate: {type: float, low: 0.01, high: 1.0, log: true}
+
+output:
+  results_dir: "results"
+
+
+test_set: 
+  size: 0.2
+  random_state: 42

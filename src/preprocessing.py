@@ -66,6 +66,27 @@ def clean_dataset(df: pd.DataFrame, diagnostics_config: dict) -> pd.DataFrame:
 
     columns_to_drop = [c for c in diagnostics_config.get("redundant_columns", []) if c in out.columns]
     return out.drop(columns=columns_to_drop)
+    
+    
+def add_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+
+    out["priors_per_adult_year"] = (
+        out["priors_count"] / (out["age"] - 17).clip(lower=1)
+    )
+
+    out["juvenile_offenses_total"] = (
+        out["juv_fel_count"]
+        + out["juv_misd_count"]
+        + out["juv_other_count"]
+    )
+
+    out["combined_offenses"] = (
+        out["priors_count"]
+        + out["juvenile_offenses_total"]
+    )
+
+    return out
 
 
 def drop_duplicate_rows(df: pd.DataFrame, id_column: str = None) -> pd.DataFrame:
@@ -153,3 +174,20 @@ def split_train_test(X, y, extras, test_size: float, random_state: int):
     extras_test, row-aligned.
     """
     return train_test_split(X, y, extras, test_size=test_size, random_state=random_state, stratify=y)
+
+
+def split_dev_test(X, y, extras, test_size: float, random_state: int):
+    """
+    Sets the final test set aside (week 4 -- replaces week 2/3's `split_train_test`).
+
+    Stratified split of X, y and the extras frame (race/score_text, kept for the fairness
+    report) together, so all three stay row-aligned. Returns a *development* set and a
+    *locked test set*:
+      - development set: everything we're allowed to learn from and compare models on.
+        Cross-validation (src/evaluate.py) splits it again into train/validation folds.
+      - locked test set: never used to fit, tune, compare or choose anything. Its size and seed live in config.yaml's `test_set` section and are never changed after today.
+    """
+    X_dev, X_test, y_dev, y_test, extras_dev, extras_test = train_test_split(
+        X, y, extras, test_size=test_size, random_state=random_state, stratify=y
+    )
+    return X_dev, X_test, y_dev, y_test, extras_dev, extras_test

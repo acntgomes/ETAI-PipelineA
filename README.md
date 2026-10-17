@@ -119,3 +119,25 @@ Accuracy dropped from 0.68 to 0.63, and the f1‑score for class1 fell from 0.63
 Precision also decreased slightly (0.66 → 0.62), while recall for class 0 remained similar (0.75 → 0.74).
 Overall, the decision tree produced less balanced results between classes.
 These differences confirm that model choice affects predictive behavior and group performance.
+
+## week 6
+| 6 | Ensembles: Random Forest, Oblique Random Forest and AdaBoost | Added ensemble models to the pipeline, including custom builders for Oblique Random Forest and AdaBoost. Extended the hyperparameter search spaces in config.yaml and evaluated default and tuned models using nested cross-validation. |
+
+
+## Model evaluation
+
+### Ensembles — Week 6
+
+The pipeline was extended to include Random Forest, Oblique Random Forest, and AdaBoost, alongside the previously implemented Logistic Regression and Decision Tree. All five models were evaluated using five-fold cross-validation and nested cross-validation with 30 hyperparameter optimization trials.
+
+| Model | Default CV mean ± std (gap) | Tuned nested CV mean ± std (gap) | Best tuning score | Chosen hyperparameters |
+|---|---|---|---|---|
+| Logistic Regression | 0.672 ± 0.013 (+0.003) | 0.671 ± 0.015 (+0.005) | 0.677 | C = 0.0746 |
+| Decision Tree | 0.610 ± 0.018 (+0.085) | 0.672 ± 0.017 (+0.013) | 0.679 | max_depth = 6, min_samples_leaf = 101, criterion = gini |
+| Random Forest | 0.650 ± 0.019 (+0.082) | 0.681 ± 0.015 (+0.009) | 0.684 | max_depth = 22, min_samples_leaf = 42, max_features = 0.5 |
+| Oblique Random Forest | 0.647 ± 0.011 (+0.114) | 0.679 ± 0.013 | — | max_depth = 6, min_samples_leaf = 3, n_components = 5 |
+| AdaBoost | 0.676 ± 0.012 (+0.006) | 0.682 ± 0.017 | — | See tuning report |
+
+### Model comparison and interpretation
+
+AdaBoost achieved the highest tuned nested cross-validation accuracy (0.682), closely followed by Random Forest (0.681) and Oblique Random Forest (0.679). However, these differences are considerably smaller than the standard deviations across folds, so there is no clear evidence that one ensemble consistently outperforms the others. Hyperparameter tuning substantially improved the Decision Tree and Random Forest models while reducing their train-validation gaps, suggesting better generalisation. I would report AdaBoost as the highest-scoring model, while acknowledging the comparable performance of Random Forest and the uncertainty associated with cross-validation variability.
