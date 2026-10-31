@@ -19,12 +19,22 @@ split:
 # Week 4: how models are evaluated -- stratified k-fold cross-validation on the
 # development set (everything except the locked test set). Same random_state = same folds on
 # every run, for every model, so comparisons are like-for-like.
+
 cv:
   n_splits: 5
   shuffle: true
   random_state: 42
-  scoring: "accuracy"   # one metric for now, so numbers compare directly with weeks 2-3
-  n_jobs: 1             # folds fitted in parallel; -1 = all cores (only pays off for slow models, e.g. random forest)
+  metrics:
+    - accuracy
+    - balanced_accuracy
+    - precision
+    - recall
+    - f1
+    - fbeta_2
+    - roc_auc
+    - average_precision
+  selection_metric: "roc_auc"
+  n_jobs: 1
 
 
 diagnostics:
@@ -80,17 +90,35 @@ preprocessing:
 
 
 
+
+
+
+
+
+
+
+
 model:
-  type: "decision_tree"
+  type: "hist_gradient_boosting"
   params:
     random_state: 42
 
-feature_engineering:
-  enabled: false
+
+
+# Examples of model configurations with class weights:
+# logistic_regression:    {max_iter: 2000, class_weight: balanced}
+# decision_tree:          {random_state: 42, class_weight: balanced}
+# random_forest:          {n_estimators: 200, random_state: 42, n_jobs: -1, class_weight: balanced}
+# hist_gradient_boosting: {random_state: 42, class_weight: balanced}
+
+# Models without a direct class_weight parameter:
+# gradient_boosting: {random_state: 42}
+# naive_bayes:       {}
+
 
 
 tuning:
-  enabled: true
+  enabled: false
   n_trials: 30
   n_splits: 5                                       # folds that score each candidate
   random_state: 42                                  # seeds the sampler and those folds
@@ -116,8 +144,24 @@ tuning:
       model__n_estimators: {type: int, low: 25, high: 400, log: true}
       model__learning_rate: {type: float, low: 0.01, high: 1.0, log: true}
 
+    gradient_boosting:
+      model__n_estimators: {type: int, low: 25, high: 500, log: true}
+      model__learning_rate: {type: float, low: 0.01, high: 0.5, log: true}
+      model__max_depth: {type: int, low: 1, high: 6}
+      model__min_samples_leaf: {type: int, low: 1, high: 200, log: true}
+      model__subsample: {type: float, low: 0.5, high: 1.0}
+
+    hist_gradient_boosting:
+      model__max_iter: {type: int, low: 25, high: 500, log: true}
+      model__learning_rate: {type: float, low: 0.01, high: 0.5, log: true}
+      model__max_leaf_nodes: {type: int, low: 2, high: 63, log: true}
+      model__min_samples_leaf: {type: int, low: 5, high: 200, log: true}
+      model__l2_regularization: {type: float, low: 0.000001, high: 10.0, log: true}
+
+
 output:
   results_dir: "results"
+  scoreboard: "results/runs.csv"
 
 
 test_set: 

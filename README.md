@@ -113,7 +113,7 @@ You're free to improve on this structure or restructure it entirely -- what matt
 See `data/README.md`.
 
 
-##Resultados da primeira aula (mudança de logistic regression para decision trees e comparação dos erros)
+## week 2 Resultados da primeira aula (mudança de logistic regression para decision trees e comparação dos erros)
 After switching from logistic regression to a decision tree, the metrics changed noticeably.
 Accuracy dropped from 0.68 to 0.63, and the f1‑score for class1 fell from 0.63 to 0.55, showing weaker performance on reoffenders.
 Precision also decreased slightly (0.66 → 0.62), while recall for class 0 remained similar (0.75 → 0.74).
@@ -122,11 +122,7 @@ These differences confirm that model choice affects predictive behavior and grou
 
 ## week 6
 | 6 | Ensembles: Random Forest, Oblique Random Forest and AdaBoost | Added ensemble models to the pipeline, including custom builders for Oblique Random Forest and AdaBoost. Extended the hyperparameter search spaces in config.yaml and evaluated default and tuned models using nested cross-validation. |
-
-
-## Model evaluation
-
-### Ensembles — Week 6
+## 6.1
 
 The pipeline was extended to include Random Forest, Oblique Random Forest, and AdaBoost, alongside the previously implemented Logistic Regression and Decision Tree. All five models were evaluated using five-fold cross-validation and nested cross-validation with 30 hyperparameter optimization trials.
 
@@ -138,6 +134,80 @@ The pipeline was extended to include Random Forest, Oblique Random Forest, and A
 | Oblique Random Forest | 0.647 ± 0.011 (+0.114) | 0.679 ± 0.013 | — | max_depth = 6, min_samples_leaf = 3, n_components = 5 |
 | AdaBoost | 0.676 ± 0.012 (+0.006) | 0.682 ± 0.017 | — | See tuning report |
 
-### Model comparison and interpretation
+### 6.2  Model comparison and interpretation
 
 AdaBoost achieved the highest tuned nested cross-validation accuracy (0.682), closely followed by Random Forest (0.681) and Oblique Random Forest (0.679). However, these differences are considerably smaller than the standard deviations across folds, so there is no clear evidence that one ensemble consistently outperforms the others. Hyperparameter tuning substantially improved the Decision Tree and Random Forest models while reducing their train-validation gaps, suggesting better generalisation. I would report AdaBoost as the highest-scoring model, while acknowledging the comparable performance of Random Forest and the uncertainty associated with cross-validation variability.
+
+
+## Week 7 — Evaluation Metrics and Model Comparison
+
+### Selection Metric
+
+ROC-AUC was selected as the primary evaluation metric because it measures the model's ability to distinguish between individuals who reoffend and those who do not, without depending on a fixed classification threshold. This is particularly relevant for the COMPAS dataset, where false positives and false negatives have important consequences. Accuracy, balanced accuracy, precision, recall, F1, F-beta (β=2) and average precision are also reported to provide a more complete assessment of model performance.
+
+### Scoreboard
+
+A persistent scoreboard was implemented in `results/runs.csv` to compare all models using the same development dataset, preprocessing configuration and cross-validation folds. The scoreboard records each model's selection metric, mean score, standard deviation, fold-level results, untuned performance and Dummy Classifier baseline.
+
+**Initial results — ROC-AUC (5-fold stratified cross-validation):**
+
+| Model | Untuned ROC-AUC | Tuned ROC-AUC (nested CV) | No-model floor |
+|---|---:|---:|---:|
+| Dummy Classifier | 0.500 | N/A | 0.500 |
+| Logistic Regression | Pending | Pending | 0.500 |
+| Gaussian Naive Bayes | Pending | N/A | 0.500 |
+| Decision Tree | Pending | Pending | 0.500 |
+| Random Forest | Pending | Pending | 0.500 |
+| Oblique Random Forest | Pending | Pending | 0.500 |
+| AdaBoost | Pending | Pending | 0.500 |
+| Gradient Boosting | 0.727 | Pending | 0.500 |
+| Histogram Gradient Boosting | Pending | Pending | 0.500 |
+
+The initial Gradient Boosting evaluation achieved a mean ROC-AUC of **0.727 ± 0.015**, outperforming the Dummy Classifier baseline of 0.500. Its accuracy was 0.680, precision 0.679, recall 0.550 and F1-score 0.607. These results are preliminary, as the remaining models and tuned configurations have not yet been evaluated.
+
+All model selection and hyperparameter tuning are performed using the development set. The locked test set remains untouched until the final evaluation.
+
+
+
+
+Week 7 — Evaluation Metrics and Model Comparison
+Implementation and evaluation protocol
+The pipeline now supports Gradient Boosting, Histogram Gradient Boosting and Gaussian Naive Bayes, alongside the existing classifiers. The build_scorers() function creates scorers from the eight metrics configured in config.yaml: accuracy, balanced accuracy, precision, recall, F1, F-beta (β=2), ROC-AUC and average precision. Each model is evaluated using the same stratified five-fold splits on the development set. For models with a defined Optuna search space, tuning uses 30 trials with five inner folds and performance is assessed by five outer folds (nested cross-validation). The Dummy Classifier supplies the no-model ROC-AUC floor of 0.500.
+Selection metric
+ROC-AUC was chosen as the selection metric because it measures how well the model ranks individuals who reoffend above those who do not, across classification thresholds rather than at a single cutoff. In the COMPAS setting, both false positives and false negatives have important consequences, so relying on accuracy alone would obscure relevant trade-offs. Precision, recall, F1, F-beta (β=2), balanced accuracy and average precision are therefore reported alongside ROC-AUC to assess threshold-dependent performance and positive-class detection.
+Scoreboard — ROC-AUC
+The persistent scoreboard results/runs.csv records model configurations, tuning status, mean ROC-AUC, standard deviation across folds, fold scores and the Dummy baseline. The following table summarises the completed development-set evaluations (rounded to three decimals). “Untuned” refers to ordinary five-fold cross-validation; “Tuned” refers to the outer-fold performance of nested cross-validation, not the best internal Optuna score.
+
+
+| Model | Untuned ROC-AUC | Tuned ROC-AUC (nested CV) | No-model floor |
+|---|---:|---:|---:|
+| Dummy Classifier | 0.500 | N/A | 0.500 |
+| Logistic Regression | 0.718 | 0.718 | 0.500 |
+| Gaussian Naive Bayes | 0.685 | N/A | 0.500 |
+| Decision Tree | 0.610 | 0.717 | 0.500 |
+| Random Forest | 0.684 | 0.725 | 0.500 |
+| Oblique Random Forest | 0.685 | 0.726 | 0.500 |
+| AdaBoost | 0.723 | 0.726 | 0.500 |
+| Gradient Boosting | 0.727 | 0.727 | 0.500 |
+| Histogram Gradient Boosting | 0.717 | **0.728** | 0.500 |
+
+
+Histogram Gradient Boosting achieved the highest tuned nested-CV mean ROC-AUC (0.728 ± 0.016), closely followed by Gradient Boosting (0.727 ± 0.014), AdaBoost (0.726 ± 0.016) and Oblique Random Forest (0.726 ± 0.015). These differences are small relative to the fold-to-fold variability, so they do not establish that one of the leading models is statistically superior. The Decision Tree showed the largest difference between the untuned CV and tuned nested-CV estimates (0.610 versus 0.717); as these are different evaluation procedures, this difference should not be interpreted as a causal estimate of tuning's benefit.
+
+Class-weight experiment — Histogram Gradient Boosting
+To examine the effect of class weighting, Histogram Gradient Boosting was evaluated without tuning, with identical preprocessing and folds, once with default class weights and once with class_weight="balanced".
+
+| Metric | Default weights | Balanced class weights |
+|---|---:|---:|
+| Accuracy | 0.668 | 0.667 |
+| Balanced accuracy | 0.658 | 0.664 |
+| Precision | 0.654 | 0.632 |
+| Recall | 0.559 | **0.628** |
+| F1 | 0.603 | **0.630** |
+| F-beta (β=2) | 0.576 | **0.629** |
+| ROC-AUC | 0.7167 | 0.7169 |
+| Average precision | 0.680 | 0.682 |
+
+Balanced class weights increased recall by 0.069 (6.9 percentage points), while precision decreased by 0.022 (2.2 percentage points). ROC-AUC remained effectively unchanged. This illustrates the trade-off between identifying more positive cases and increasing false-positive predictions at a fixed classification threshold; weighting alone is not evidence of improved fairness across groups.
+
+All tuning, model comparisons and class-weight experiments were conducted on the 5,771-row development set. The 1,443-row locked test set has not been used for model selection or evaluation during this stage.
