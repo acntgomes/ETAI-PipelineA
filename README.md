@@ -211,3 +211,50 @@ To examine the effect of class weighting, Histogram Gradient Boosting was evalua
 Balanced class weights increased recall by 0.069 (6.9 percentage points), while precision decreased by 0.022 (2.2 percentage points). ROC-AUC remained effectively unchanged. This illustrates the trade-off between identifying more positive cases and increasing false-positive predictions at a fixed classification threshold; weighting alone is not evidence of improved fairness across groups.
 
 All tuning, model comparisons and class-weight experiments were conducted on the 5,771-row development set. The 1,443-row locked test set has not been used for model selection or evaluation during this stage.
+
+
+
+
+
+## Week 8 — Evaluation Metrics and Model Comparison
+
+Feature Selection reduced the number of features from 10 to 2, while achieving a similar ROC-AUC (0.7250 vs. 0.7274). The corrected paired t-test showed no statistically significant difference between the models (p = 0.425), although this does not prove equivalence. The smaller model is simpler and requires fewer input features, which may be beneficial in practice. I would keep Feature Selection enabled when simplicity is a priority, since the observed loss in predictive performance is very small.
+
+## Week 8 — Feature Selection and XGBoost
+
+### Pipeline Improvements
+
+XGBoost was added to the pipeline, together with a VoteSelector combining Random Forest, Gradient Boosting and L1 Logistic Regression. Feature selection is performed inside the pipeline to avoid data leakage, and the minimum number of votes (`min_votes`) is included in Optuna's hyperparameter search.
+
+### XGBoost Results
+
+Both configurations were evaluated using 5-fold nested cross-validation, 30 Optuna trials and ROC-AUC as the selection metric.
+
+| Configuration | ROC-AUC (mean ± std) |
+|---|---|
+| XGBoost without Feature Selection | 0.7274 ± 0.0148 |
+| XGBoost with Feature Selection | 0.7250 ± 0.0129 |
+
+### Corrected Paired t-test
+
+The corrected paired t-test was used to compare the ROC-AUC scores across the same five outer folds.
+
+- Mean difference (with − without selection): −0.0024
+- t-statistic: −0.888
+- p-value: 0.425
+- Folds won by Feature Selection: 2/5
+
+The difference was not statistically significant at the 5% significance level.
+
+### Selected Features
+
+The final tuned XGBoost model retained **2 out of 10 features**:
+
+- `numeric__age`
+- `numeric__priors_count`
+
+This represents an 80% reduction in the number of features.
+
+### Conclusion
+
+Feature Selection reduced the number of features from 10 to 2, while achieving a similar ROC-AUC (0.7250 vs. 0.7274). The corrected paired t-test showed no statistically significant difference between the models (p = 0.425), although this does not prove equivalence. The smaller model requires fewer input features, which may be beneficial in practice. I would keep Feature Selection enabled when simplicity is a priority, since the observed loss in predictive performance is very small.

@@ -27,14 +27,20 @@ def save_run(
         f"run_{run}.txt"
     )
 
+    
     header = (
         f"Run: {run}\n"
         f"Model: {config['model']['type']} "
         f"params={config['model'].get('params', {})}\n"
         f"Selection metric: "
         f"{config['cv']['selection_metric']}\n"
+        f"Feature selection: "
+        f"{config.get('feature_selection', {}).get('enabled', False)}\n"
+        f"Minimum votes: "
+        f"{config.get('feature_selection', {}).get('min_votes', 2)}\n"
         + "=" * 60 + "\n\n"
     )
+
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(header + report_text)

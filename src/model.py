@@ -15,6 +15,12 @@ from sklearn.ensemble import (
 
 from sklearn.naive_bayes import GaussianNB
 
+import numpy as np
+from sklearn.base import BaseEstimator
+from sklearn.feature_selection import SelectorMixin
+from xgboost import XGBClassifier
+
+
 
 
 def adaboost(max_depth: int = 1, **params):
@@ -56,6 +62,8 @@ _MODELS = {
     "gradient_boosting": GradientBoostingClassifier,
     "hist_gradient_boosting": HistGradientBoostingClassifier,
     "naive_bayes": GaussianNB,
+    "xgboost": XGBClassifier,
+
 }
 
 def build_model(model_config: dict):
@@ -69,15 +77,80 @@ def build_model(model_config: dict):
 
 
 
+class VoteSelector(SelectorMixin, BaseEstimator):
+    """
+    Keep features selected by at least min_votes models.
+    """
 
-def build_pipeline(preprocessing_config: dict, model_config: dict) -> Pipeline:
+    def __init__(self, min_votes: int = 2, random_state=None):
+        self.min_votes = min_votes
+        self.random_state = random_state
+
+    def fit(self, X, y):
+        forest = RandomForestClassifier(
+            n_estimators=200,
+            min_samples_leaf=20,
+            random_state=self.random_state,
+            n_jobs=-1
+        ).fit(X, y)
+
+        booster = GradientBoostingClassifier(
+            random_state=self.random_state
+        ).fit(X, y)
+
+        lasso = LogisticRegression(
+            l1_ratio=1.0,
+            C=0.01,
+            solver="liblinear"
+        ).fit(X, y)
+
+        
+        self.votes_ = (
+            (forest.feature_importances_ > forest.feature_importances_.mean()).astype(int)
+            + (booster.feature_importances_ > booster.feature_importances_.mean()).astype(int)
+            + (np.abs(lasso.coef_[0]) > 1e-8).astype(int)
+        )
+
+       
+        self.support_ = self.votes_ >= self.min_votes
+
+        if not self.support_.any():
+            self.support_[np.argmax(self.votes_)] = True
+
+        return self
+
+    def _get_support_mask(self):
+        return self.support_
+
+
+
+
+
+
+def build_pipeline(
+    preprocessing_config: dict,
+    model_config: dict,
+    selection_config: dict = None,
+    memory=None
+) -> Pipeline:
     """
-    The estimator that is cross-validated, tuned and refit: preprocessing and model as one
-    Pipeline, so every learned step is re-fit on the training part of each fold. Step names
-    address hyperparameters from outside (`model__max_depth`, `prep__numeric__impute__strategy`).
-    Any new learned step (e.g. feature selection) belongs here, between "prep" and "model".
+    Build the preprocessing, selection and model pipeline.
+    Feature selection is fitted inside each CV fold.
     """
-    return Pipeline([
-        ("prep", build_preprocessor(preprocessing_config)),
-        ("model", build_model(model_config)),
-    ])
+
+    steps = [
+        ("prep", build_preprocessor(preprocessing_config))
+    ]
+
+    if selection_config and selection_config.get("enabled", False):
+        steps.append((
+            "select",
+            VoteSelector(
+                min_votes=selection_config.get("min_votes", 2),
+                random_state=selection_config.get("random_state")
+            )
+        ))
+
+    steps.append(("model", build_model(model_config)))
+
+    return Pipeline(steps, memory=memory)

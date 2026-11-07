@@ -12,6 +12,8 @@ This orchestrates the full pipeline:
 
 from datetime import datetime
 
+import shutil
+import tempfile
 import optuna
 import yaml
 from sklearn.model_selection import StratifiedKFold
@@ -124,9 +126,17 @@ def main():
     )
 
     # 4. Build model and dummy baseline
+    
+    selection_config = config.get("feature_selection", {})
+    cache_dir = tempfile.mkdtemp(prefix="pipeline_cache_")
+
     pipeline = build_pipeline(
-        config["preprocessing"], config["model"]
+        config["preprocessing"],
+        config["model"],
+        selection_config,
+        memory=cache_dir
     )
+
 
     floor_pipeline = build_pipeline(
         config["preprocessing"], {"type": "dummy"}
@@ -176,7 +186,13 @@ def main():
                 f"No tuning search space for {model_type}"
             )
 
-        search_space = search_spaces[model_type]
+        search_space = search_spaces[model_type].copy()
+
+        if selection_config.get("enabled", False):
+            search_space.update(
+                selection_config.get("search_space", {})
+            )
+
         n_trials = tuning_config["n_trials"]
         tuning_seed = tuning_config["random_state"]
 
@@ -237,6 +253,27 @@ def main():
 
     # 7. Fit final model on development data
     pipeline.fit(X_dev, y_dev)
+    
+    if selection_config.get("enabled", False):
+        feature_names = pipeline.named_steps[
+            "prep"
+        ].get_feature_names_out()
+
+        selected = pipeline.named_steps[
+            "select"
+        ].get_support()
+
+        kept_features = feature_names[selected]
+
+        selection_text = (
+            f"Features kept: {len(kept_features)} "
+            f"out of {len(feature_names)}\n"
+            + "\n".join(kept_features)
+        )
+
+        print("\n" + selection_text)
+        report += "\n\n" + selection_text
+
 
     refit = (
         f"Final model: {model_type} fitted on "
@@ -255,6 +292,7 @@ def main():
         "data": config["data"]["path"],
         "model": model_type,
         "tuned": tuning_enabled,
+        "feature_selection": selection_config.get("enabled", False),
         "encoder": config["preprocessing"]["encoder"],
         "scaler": config["preprocessing"]["scaler"],
         "feature_engineering": config.get(
@@ -313,6 +351,7 @@ def main():
     )
 
     print(f"\nFull results saved to {path}")
+    shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
