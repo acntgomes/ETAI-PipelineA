@@ -258,3 +258,74 @@ This represents an 80% reduction in the number of features.
 ### Conclusion
 
 Feature Selection reduced the number of features from 10 to 2, while achieving a similar ROC-AUC (0.7250 vs. 0.7274). The corrected paired t-test showed no statistically significant difference between the models (p = 0.425), although this does not prove equivalence. The smaller model requires fewer input features, which may be beneficial in practice. I would keep Feature Selection enabled when simplicity is a priority, since the observed loss in predictive performance is very small.
+
+
+
+| 9 | Beyond COMPAS — Adult Income | Adapted the existing pipeline to the Adult Income dataset using a separate configuration file. Generalized data cleaning, fixed COMPAS-specific assumptions, generated predictions for 2,000 new observations and preserved the original COMPAS pipeline. |
+
+
+## Week 9 — Beyond COMPAS
+
+### Option A — Adult Income
+
+The pipeline was adapted to the Adult Income dataset to predict whether a person earns more than $50,000 annually (`income_over_50k`).
+
+The dataset contains 6,000 training observations and 2,000 new observations. A separate `config_adult.yaml` was created to preserve the original COMPAS configuration.
+
+### How to Run
+
+To run the original COMPAS pipeline:
+
+```bash
+python main.py
+```
+
+To run the Adult Income pipeline:
+
+```bash
+python main.py config_adult.yaml
+```
+
+The Adult pipeline generates 2,000 predictions in `results/adult/adult_predictions.csv`, including the original ID, predicted probability and binary prediction.
+
+### Problems Encountered and Solutions
+
+| Problem | Cause | Solution |
+|---|---|---|
+| Adult missing values were not handled correctly | The original cleaning logic did not replace all categorical `?` placeholders | Generalized placeholder handling in `clean_dataset()` |
+| `model_type` was undefined | The variable was missing after adapting `main.py` to accept different configurations | Restored the model type assignment from the selected configuration |
+| `KeyError: score_text` | The fairness report assumed a COMPAS-specific column | Made the COMPAS fairness report conditional on the availability of `score_text` |
+| `UnboundLocalError: study` | The scoreboard attempted to access Optuna results when tuning was disabled | Initialized `study` and checked its availability before accessing its parameters |
+
+### Model Results
+
+The XGBoost pipeline was evaluated using 5-fold stratified cross-validation on the development set, with Feature Selection enabled and ROC-AUC as the selection metric.
+
+| Metric | XGBoost (untuned CV) | Required minimum |
+|---|---:|---:|
+| ROC-AUC | **0.909 ± 0.016** | 0.900 |
+| Accuracy | **0.859 ± 0.014** | 0.855 |
+| F1-score | **0.673 ± 0.039** | 0.660 |
+
+All three required performance thresholds were achieved in the same cross-validation run.
+
+An additional nested cross-validation experiment with Optuna produced ROC-AUC 0.910, accuracy 0.857 and F1-score 0.667, but execution failed before the report and scoreboard could be saved. Therefore, the completed untuned run is used as the documented result.
+
+### Feature Selection
+
+The VoteSelector retained **8 out of 38 features**:
+
+- `numeric__age`
+- `numeric__education_num`
+- `numeric__capital_gain`
+- `numeric__capital_loss`
+- `categorical__education`
+- `categorical__marital_status`
+- `categorical__occupation`
+- `categorical__relationship`
+
+No anonymized `v01`–`v25` features were retained in the final untuned model.
+
+### Conclusion
+
+The hardest part of adapting the pipeline was identifying assumptions specific to COMPAS, especially the fairness report and missing-value handling. Generalizing the cleaning functions and making the evaluation conditional on the available columns allowed both datasets to use the same pipeline. XGBoost with Feature Selection achieved the required ROC-AUC, accuracy and F1-score thresholds without tuning. The original COMPAS pipeline remained functional, and predictions were successfully generated for all 2,000 new Adult observations.

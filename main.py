@@ -12,6 +12,9 @@ This orchestrates the full pipeline:
 
 from datetime import datetime
 
+
+import pandas as pd
+import sys
 import shutil
 import tempfile
 import optuna
@@ -52,8 +55,14 @@ def load_config(path: str = "config.yaml") -> dict:
         return yaml.safe_load(f)
 
 
+
 def main():
-    config = load_config()
+    config_path = (
+        sys.argv[1] if len(sys.argv) > 1
+        else "config.yaml"
+    )
+
+    config = load_config(config_path)
     run = datetime.now().strftime("%Y%m%d_%H%M%S")
     model_type = config["model"]["type"]
 
@@ -175,6 +184,8 @@ def main():
     # 5. Hyperparameter tuning
     tuning_config = config.get("tuning", {})
     tuning_enabled = tuning_config.get("enabled", False)
+    
+    study = None
 
     if tuning_enabled:
         search_spaces = tuning_config.get(
@@ -219,10 +230,15 @@ def main():
             tuning_seed, n_jobs=n_jobs,
         )
 
-        report += "\n\n" + cv_report(
-            final_scores, metrics, selection_metric,
-            "Nested cross-validation"
+        
+    if extras_dev is not None and "score_text" in extras_dev.columns:
+        report += "\n\n" + fairness_report(
+            y_dev,
+            oof_proba,
+            extras_dev,
+            sensitive_attr=config["data"]["sensitive_attr"],
         )
+
 
         pipeline, study = tune_pipeline(
             pipeline, X_dev, y_dev,
@@ -246,10 +262,15 @@ def main():
         y_dev, oof_proba
     )
 
-    report += "\n\n" + fairness_report(
-        y_dev, oof_proba, extras_dev,
-        sensitive_attr=config["data"]["sensitive_attr"],
-    )
+    
+    if extras_dev is not None and "score_text" in extras_dev.columns:
+        report += "\n\n" + fairness_report(
+            y_dev,
+            oof_proba,
+            extras_dev,
+            sensitive_attr=config["data"]["sensitive_attr"],
+        )
+
 
     # 7. Fit final model on development data
     pipeline.fit(X_dev, y_dev)
@@ -286,6 +307,63 @@ def main():
         "not evaluated."
     )
 
+
+    
+    # Predict new observations (Adult Income)
+    new_data_path = config["data"].get("new_data_path")
+
+    if new_data_path:
+        df_new_raw = load_data(new_data_path)
+
+        # Preserve IDs and original row count
+        new_ids = df_new_raw["id"].copy()
+
+        # Apply the same cleaning rules used during training
+        df_new_clean = clean_dataset(
+            df_new_raw, config["diagnostics"]
+        )
+
+        # No duplicate removal for new observations
+        X_new, _, _ = split_features_target(
+            df_new_clean,
+            config["data"],
+            mnar_sources
+        )
+
+        probabilities = pipeline.predict_proba(X_new)[:, 1]
+        predictions = (probabilities >= 0.5).astype(int)
+
+        new_results = pd.DataFrame({
+            "id": new_ids.to_numpy(),
+            "probability": probabilities,
+            "prediction": predictions
+        })
+
+        if len(new_results) != len(df_new_raw):
+            raise ValueError(
+                "The number of predictions does not match the input."
+            )
+
+        output_path = config["output"].get(
+            "predictions_path",
+            "results/adult/adult_predictions.csv"
+        )
+
+        import os
+        os.makedirs(
+            os.path.dirname(output_path) or ".",
+            exist_ok=True
+        )
+
+        new_results.to_csv(output_path, index=False)
+
+        print(
+            f"\nNew predictions saved to {output_path}"
+        )
+        print(f"Rows predicted: {len(new_results)}")
+
+
+
     # 8. Save scoreboard
     row = {
         "run": run,
@@ -299,9 +377,12 @@ def main():
             "feature_engineering", {}
         ).get("enabled", False),
         "params": str(config["model"].get("params", {})),
+        
         "tuned_params": (
-            str(study.best_params) if tuning_enabled else ""
+            str(study.best_params)
+            if study is not None else ""
         ),
+
         "metric": selection_metric,
         "mean": final_scores["validation"].mean(),
         "std": final_scores["validation"].std(ddof=1),
