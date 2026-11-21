@@ -19,6 +19,8 @@ import shutil
 import tempfile
 import optuna
 import yaml
+import os
+import joblib
 from sklearn.model_selection import StratifiedKFold
 
 from src.data import load_data
@@ -187,6 +189,16 @@ def main():
     
     study = None
 
+    
+    tuning_seed = tuning_config["random_state"]
+
+    inner_cv = StratifiedKFold(
+    n_splits=tuning_config["n_splits"],
+    shuffle=True,
+    random_state=tuning_seed,
+)
+
+
     if tuning_enabled:
         search_spaces = tuning_config.get(
             "search_spaces", {}
@@ -205,17 +217,13 @@ def main():
             )
 
         n_trials = tuning_config["n_trials"]
-        tuning_seed = tuning_config["random_state"]
+        
 
         optuna.logging.set_verbosity(
             optuna.logging.WARNING
         )
 
-        inner_cv = StratifiedKFold(
-            n_splits=tuning_config["n_splits"],
-            shuffle=True,
-            random_state=tuning_seed,
-        )
+        
 
         print(
             f"\nNested CV: {n_trials} Optuna trials",
@@ -240,16 +248,19 @@ def main():
         )
 
 
-        pipeline, study = tune_pipeline(
-            pipeline, X_dev, y_dev,
-            inner_cv, scorers[selection_metric],
-            search_space, n_trials,
-            tuning_seed, n_jobs=n_jobs,
-        )
+        
+        if tuning_enabled:
+            pipeline, study = tune_pipeline(
+                pipeline, X_dev, y_dev,
+                inner_cv, scorers[selection_metric],
+                search_space, n_trials,
+                tuning_seed, n_jobs=n_jobs,
+            )
 
-        report += "\n\n" + tuning_report(
-            study, final_scores, selection_metric
-        )
+            report += "\n\n" + tuning_report(
+                study, final_scores, selection_metric
+            )
+
 
     # 6. Report all metrics
     print("\nModel metrics:")
@@ -349,7 +360,7 @@ def main():
             "results/adult/adult_predictions.csv"
         )
 
-        import os
+        
         os.makedirs(
             os.path.dirname(output_path) or ".",
             exist_ok=True
@@ -363,12 +374,28 @@ def main():
         print(f"Rows predicted: {len(new_results)}")
 
 
+    
+    # Save the final fitted pipeline for future predictions
+    model_path = config.get("output", {}).get(
+        "model_path", "models/model.joblib"
+    )
+
+    os.makedirs(
+        os.path.dirname(model_path) or ".",
+        exist_ok=True
+    )
+
+    pipeline.set_params(memory=None)
+    joblib.dump(pipeline, model_path)
+
+    print(f"\nModel saved to {model_path}")
 
     # 8. Save scoreboard
     row = {
         "run": run,
         "data": config["data"]["path"],
         "model": model_type,
+        "imputer": config["preprocessing"]["imputation"]["numeric_strategy"],
         "tuned": tuning_enabled,
         "feature_selection": selection_config.get("enabled", False),
         "encoder": config["preprocessing"]["encoder"],

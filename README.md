@@ -329,3 +329,79 @@ No anonymized `v01`–`v25` features were retained in the final untuned model.
 ### Conclusion
 
 The hardest part of adapting the pipeline was identifying assumptions specific to COMPAS, especially the fairness report and missing-value handling. Generalizing the cleaning functions and making the evaluation conditional on the available columns allowed both datasets to use the same pipeline. XGBoost with Feature Selection achieved the required ROC-AUC, accuracy and F1-score thresholds without tuning. The original COMPAS pipeline remained functional, and predictions were successfully generated for all 2,000 new Adult observations.
+
+
+## Week 10 — Missing Values & Deployment
+
+### A1 — Missing Values
+
+The preprocessing pipeline was extended to support five configurable numeric imputation strategies: median, mean, KNN, iterative and Random Forest imputation. Numeric features are scaled before imputation, and the selected strategy is recorded in the scoreboard and execution report.
+
+Four imputers were evaluated using XGBoost with Feature Selection, 5-fold stratified cross-validation, ROC-AUC as the selection metric and hyperparameter tuning disabled.
+
+### Imputer Comparison
+
+| Imputer | ROC-AUC (mean ± std) |
+|---|---|
+| Median | 0.720716 ± 0.012734 |
+| KNN | 0.717030 ± 0.012974 |
+| Iterative | 0.720837 ± 0.013776 |
+| Random Forest | **0.720958 ± 0.012835** |
+
+Random Forest achieved the highest mean ROC-AUC, although its performance was very close to Median and Iterative imputation.
+
+### Corrected Paired t-test
+
+The corrected paired t-test was applied to the five cross-validation folds to compare Random Forest imputation against the other three methods.
+
+| Comparison | Mean ROC-AUC difference | t-statistic | p-value | Folds won |
+|---|---:|---:|---:|---:|
+| Random Forest vs Median | +0.000243 | 0.2493 | 0.8154 | 2/5 |
+| Random Forest vs KNN | +0.003929 | 3.9976 | 0.0162 | 5/5 |
+| Random Forest vs Iterative | +0.000121 | 0.1321 | 0.9013 | 2/5 |
+
+Random Forest performed significantly better than KNN in the individual comparison at the 5% significance level. However, there was no statistically significant difference between Random Forest and either Median or Iterative imputation. These results should be interpreted cautiously because only five folds were used and multiple comparisons were performed.
+
+### Selected Imputer
+
+**Median imputation was selected as the final strategy.**
+
+Although Random Forest achieved the highest mean ROC-AUC, its advantage over Median was extremely small (0.000243) and not statistically significant (p = 0.8154). Median imputation is simpler and computationally cheaper, making it a reasonable choice without sacrificing meaningful predictive performance. The final pipeline was retrained with Median imputation and saved successfully.
+
+### A2 — Deployment
+
+The pipeline was extended to save the final fitted model, including preprocessing, feature selection and XGBoost classification.
+
+The trained pipeline is saved to:
+
+`models/model.joblib`
+
+A new script, `predict.py`, was created to load this model and generate predictions for new COMPAS observations without retraining.
+
+To run the complete pipeline and save the model:
+
+```bash
+python main.py
+```
+
+To generate predictions for new observations:
+
+```bash
+python predict.py data/compas_new_people.csv predictions.csv
+```
+
+The prediction command was successfully tested with the 20 observations in `compas_new_people.csv`.
+
+The generated `predictions.csv` contains:
+
+| Column | Description |
+|---|---|
+| `id` | Original observation identifier |
+| `probability` | Predicted probability of two-year recidivism |
+| `prediction` | Binary classification (0 or 1), using a 0.5 threshold |
+
+The output was validated and contained exactly **20 rows**, with no missing values in any of the three columns.
+
+### Conclusion
+
+The Week 10 improvements allow the pipeline to handle missing numeric values through configurable imputation strategies and to generate predictions for new observations without retraining. The comparison showed that Random Forest, Median and Iterative imputation achieved very similar predictive performance, leading to the selection of Median for its simplicity and efficiency. The deployment script successfully generated all 20 required predictions using the saved pipeline.

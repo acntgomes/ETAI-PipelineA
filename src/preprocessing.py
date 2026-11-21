@@ -10,7 +10,11 @@ import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
+
+from sklearn.experimental import enable_iterative_imputer  # noqa: F401
+from sklearn.impute import SimpleImputer, KNNImputer, IterativeImputer
+from sklearn.ensemble import RandomForestRegressor
+
 from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.preprocessing import (
     OneHotEncoder, OrdinalEncoder, TargetEncoder, StandardScaler, MinMaxScaler, RobustScaler,
@@ -56,6 +60,16 @@ def clean_dataset(df: pd.DataFrame, diagnostics_config: dict) -> pd.DataFrame:
     """
     out = df.copy()
     placeholder_tokens = set(diagnostics_config.get("placeholder_tokens", []))
+    
+    normalized_tokens = {
+        str(token).strip().lower()
+        for token in placeholder_tokens
+    }
+
+    for col in out.select_dtypes(include=["object", "str", "string"]).columns:
+        values = out[col].astype("string").str.strip().str.lower()
+        missing_mask = values.isin(normalized_tokens)
+        out.loc[missing_mask, col] = np.nan
 
     for col in diagnostics_config.get("numeric_text_columns", []):
         if col in out.columns:
@@ -129,6 +143,34 @@ def split_features_target(df: pd.DataFrame, data_config: dict, mnar_indicator_so
     return df[feature_cols], y, extras
 
 
+_NUMERIC_IMPUTERS = {
+    "median": lambda cfg, seed: SimpleImputer(strategy="median"),
+
+    "mean": lambda cfg, seed: SimpleImputer(strategy="mean"),
+
+    "knn": lambda cfg, seed: KNNImputer(
+        n_neighbors=cfg.get("n_neighbors", 5)
+    ),
+
+    "iterative": lambda cfg, seed: IterativeImputer(
+        max_iter=cfg.get("max_iter", 10),
+        random_state=seed
+    ),
+
+    "random_forest": lambda cfg, seed: IterativeImputer(
+        estimator=RandomForestRegressor(
+            n_estimators=cfg.get("n_estimators", 50),
+            min_samples_leaf=5,
+            random_state=seed,
+            n_jobs=-1
+        ),
+        max_iter=cfg.get("max_iter", 10),
+        random_state=seed
+    ),
+}
+
+
+
 _SCALERS = {"none": "passthrough", "standard": StandardScaler, "minmax": MinMaxScaler, "robust": RobustScaler}
 # sklearn's TargetEncoder cross-fits: a training row's encoding never uses its own label.
 _ENCODERS = {
@@ -139,32 +181,62 @@ _ENCODERS = {
 }
 
 
+
 def build_preprocessor(preprocessing_config: dict) -> ColumnTransformer:
     """
-    Builds the unfitted ColumnTransformer described by `preprocessing_config`: imputation and
-    scaling for numeric columns, imputation and encoding for categorical ones, and the
-    missingness flags passed through. Every encoder tolerates unseen categories.
+    Build preprocessing with configurable numeric imputation.
+    Scaling is applied before numeric imputation.
     """
+
     imputation = preprocessing_config.get("imputation", {})
+
     scaler_factory = _SCALERS[preprocessing_config["scaler"]]
-    scaler = scaler_factory() if callable(scaler_factory) else scaler_factory
-    encoder = _ENCODERS[preprocessing_config["encoder"]](preprocessing_config.get("random_state"))
+    scaler = (
+        scaler_factory()
+        if callable(scaler_factory)
+        else scaler_factory
+    )
+
+    encoder = _ENCODERS[preprocessing_config["encoder"]](
+        preprocessing_config.get("random_state")
+    )
+
+    numeric_strategy = imputation.get("numeric_strategy", "median")
+
+    if numeric_strategy not in _NUMERIC_IMPUTERS:
+        raise ValueError(
+            f"Unknown numeric_strategy: {numeric_strategy}. "
+            f"Options: {list(_NUMERIC_IMPUTERS)}"
+        )
 
     numeric_pipeline = Pipeline([
-        ("impute", SimpleImputer(strategy=imputation.get("numeric_strategy", "median"))),
         ("scale", scaler),
+        ("impute", _NUMERIC_IMPUTERS[numeric_strategy](
+            imputation,
+            preprocessing_config.get("random_state")
+        )),
     ])
+
     categorical_pipeline = Pipeline([
-        ("impute", SimpleImputer(strategy=imputation.get("categorical_strategy", "most_frequent"))),
+        ("impute", SimpleImputer(
+            strategy=imputation.get(
+                "categorical_strategy", "most_frequent"
+            )
+        )),
         ("encode", encoder),
     ])
-    indicator_cols = [f"{c}_was_missing" for c in preprocessing_config.get("mnar_indicator_sources", [])]
+
+    indicator_cols = [
+        f"{c}_was_missing"
+        for c in preprocessing_config.get("mnar_indicator_sources", [])
+    ]
 
     return ColumnTransformer([
         ("numeric", numeric_pipeline, preprocessing_config["numeric_features"]),
         ("categorical", categorical_pipeline, preprocessing_config["categorical_features"]),
         ("indicators", "passthrough", indicator_cols),
     ])
+
 
 
 def split_train_test(X, y, extras, test_size: float, random_state: int):

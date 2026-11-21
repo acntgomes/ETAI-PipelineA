@@ -34,6 +34,8 @@ def save_run(
         f"params={config['model'].get('params', {})}\n"
         f"Selection metric: "
         f"{config['cv']['selection_metric']}\n"
+        f"Numeric imputer: "
+        f"{config['preprocessing']['imputation']['numeric_strategy']}\n"
         f"Feature selection: "
         f"{config.get('feature_selection', {}).get('enabled', False)}\n"
         f"Minimum votes: "
